@@ -70,8 +70,9 @@ def _persist_artifact(tenant_id: str, filename: str, sha256: str, raw: bytes) ->
     return str(target)
 
 
-def _run_ocr_image(img: Image.Image) -> tuple[str, float, str, list[str]]:
+def _run_ocr_image(img: Image.Image) -> tuple[str, float, str, bool, list[str]]:
     warnings: list[str] = []
+    visual_used = False
     pre = ImageOps.exif_transpose(img).convert("L")
     pre = ImageOps.autocontrast(pre)
     try:
@@ -103,14 +104,18 @@ def _run_ocr_image(img: Image.Image) -> tuple[str, float, str, list[str]]:
     if avg_conf < settings.ocr_min_confidence or len(text) < 20:
         buf = io.BytesIO()
         img.convert("RGB").save(buf, format="PNG")
-        vision_text = vision_ocr_fallback(buf.getvalue())
+        vision_text, vision_note = vision_ocr_fallback(buf.getvalue())
+        if vision_note:
+            warnings.append(vision_note)
         if vision_text and len(vision_text) > len(text):
             text = vision_text
-            method = f"{method}+vision"
-            avg_conf = max(avg_conf, 0.75)
+            method = f"{method}+vision_uncalibrated"
+            visual_used = True
         else:
-            warnings.append("Confianza OCR baja o texto escaso; se recomienda verificación visual manual.")
-    return text, avg_conf, method, warnings
+            warnings.append("Confianza OCR baja o texto escaso; se requiere verificación visual manual.")
+
+    needs_review = visual_used or (avg_conf < settings.ocr_min_confidence)
+    return text, avg_conf, method, needs_review, warnings
 
 
 def ingest_document(tenant_id: str, filename: str, raw: bytes) -> IngestionResult:
@@ -133,7 +138,7 @@ def ingest_document(tenant_id: str, filename: str, raw: bytes) -> IngestionResul
 
     if mime_type.startswith("image/"):
         with Image.open(io.BytesIO(raw)) as img:
-            text, conf, method, w = _run_ocr_image(img)
+            text, conf, method, needs_review, w = _run_ocr_image(img)
             warnings.extend(w)
         return IngestionResult(
             filename=filename,
@@ -144,8 +149,8 @@ def ingest_document(tenant_id: str, filename: str, raw: bytes) -> IngestionResul
             pages=[(1, text)],
             extraction_method=method,
             ocr_confidence=conf,
-            needs_visual_review=(conf < settings.ocr_min_confidence),
-            warnings=warnings,
+            needs_visual_review=needs_review,
+            warnings=sorted(set(warnings)),
         )
 
     if mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
@@ -169,6 +174,7 @@ def ingest_document(tenant_id: str, filename: str, raw: bytes) -> IngestionResul
 
     pages: list[tuple[int | None, str]] = []
     ocr_confs: list[float] = []
+    any_visual = False
     used_ocr = False
     used_native = False
     with fitz.open(stream=raw, filetype="pdf") as pdf:
@@ -181,8 +187,9 @@ def ingest_document(tenant_id: str, filename: str, raw: bytes) -> IngestionResul
                 used_ocr = True
                 pix = page.get_pixmap(dpi=220)
                 with Image.open(io.BytesIO(pix.tobytes("png"))) as page_img:
-                    ocr_text, conf, _m, w = _run_ocr_image(page_img)
+                    ocr_text, conf, _m, v_flag, w = _run_ocr_image(page_img)
                     ocr_confs.append(conf)
+                    any_visual = any_visual or v_flag
                     warnings.extend(w)
                     pages.append((i + 1, ocr_text or native_text))
 
@@ -194,6 +201,7 @@ def ingest_document(tenant_id: str, filename: str, raw: bytes) -> IngestionResul
     else:
         method = "pdf_native"
 
+    needs_review = any_visual or (avg_conf is not None and avg_conf < settings.ocr_min_confidence)
     return IngestionResult(
         filename=filename,
         mime_type=mime_type,
@@ -203,6 +211,6 @@ def ingest_document(tenant_id: str, filename: str, raw: bytes) -> IngestionResul
         pages=pages,
         extraction_method=method,
         ocr_confidence=avg_conf,
-        needs_visual_review=(avg_conf is not None and avg_conf < settings.ocr_min_confidence),
+        needs_visual_review=needs_review,
         warnings=sorted(set(warnings)),
     )

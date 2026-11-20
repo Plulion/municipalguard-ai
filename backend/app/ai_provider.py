@@ -1,6 +1,7 @@
 """Adaptador dual intercambiable: 100% local (Ollama) o híbrido (API compatible OpenAI)."""
 import base64
 import json
+import os
 import re
 import requests
 from .config import settings
@@ -24,15 +25,17 @@ def _extract_json_block(raw_text: str) -> dict | None:
 
 def ai_status() -> dict:
     mode = settings.ai_provider
+    allow_hybrid_img = os.getenv("ALLOW_HYBRID_IMAGE_UPLOAD", "false").lower() == "true"
     info = {
         "provider": mode,
         "pii_masking_enabled": settings.pii_masking_enabled,
+        "allow_hybrid_image_upload": allow_hybrid_img,
         "available": False,
         "model": None,
         "detail": "",
     }
     if mode == "disabled":
-        info["detail"] = "IA generativa desactivada; operando solo con reglas deterministas y OCR local."
+        info["detail"] = "IA generativa desactivada; operando con reglas deterministas y OCR local."
         return info
     if mode == "local":
         info["model"] = settings.ollama_model
@@ -52,7 +55,11 @@ def ai_status() -> dict:
         info["model"] = settings.hybrid_model
         if settings.hybrid_api_url and settings.hybrid_api_key:
             info["available"] = True
-            info["detail"] = "Modo híbrido configurado con enmascaramiento PII obligatorio."
+            info["detail"] = (
+                "Modo híbrido activo con filtro parcial de PII en texto; envío de imágenes bloqueado por defecto."
+                if not allow_hybrid_img
+                else "Modo híbrido activo (envío de imágenes habilitado: verifique privacidad de documentos)."
+            )
         else:
             info["detail"] = "Modo híbrido seleccionado, pero faltan HYBRID_API_URL o HYBRID_API_KEY en .env."
         return info
@@ -135,7 +142,7 @@ def analyze_json(system_prompt: str, user_prompt: str, timeout: int = 45) -> dic
     return {"status": "invalid_provider", "provider": mode, "data": None, "pii_redactions": pii_counts}
 
 
-def vision_ocr_fallback(image_bytes: bytes, prompt: str = "Transcribe fielmente todo el texto visible en español, montos, fechas y RUT.") -> str | None:
+def vision_ocr_fallback(image_bytes: bytes, prompt: str = "Transcribe fielmente todo el texto visible en español, montos, fechas y RUT.") -> tuple[str | None, str | None]:
     mode = settings.ai_provider
     encoded = base64.b64encode(image_bytes).decode("ascii")
     if mode == "local":
@@ -146,10 +153,14 @@ def vision_ocr_fallback(image_bytes: bytes, prompt: str = "Transcribe fielmente 
                 timeout=60,
             )
             if resp.ok:
-                return (resp.json().get("response") or "").strip() or None
+                txt = (resp.json().get("response") or "").strip() or None
+                return txt, ("Respaldo de modelo visual local usado; requiere verificación humana." if txt else None)
         except requests.RequestException:
-            return None
+            return None, None
     if mode == "hybrid" and settings.hybrid_api_url and settings.hybrid_api_key:
+        allow_img = os.getenv("ALLOW_HYBRID_IMAGE_UPLOAD", "false").lower() == "true"
+        if not allow_img:
+            return None, "Envío de imagen a proveedor híbrido bloqueado por privacidad (defina ALLOW_HYBRID_IMAGE_UPLOAD=true si autoriza)."
         try:
             resp = requests.post(
                 f"{settings.hybrid_api_url}/chat/completions",
@@ -170,7 +181,8 @@ def vision_ocr_fallback(image_bytes: bytes, prompt: str = "Transcribe fielmente 
                 timeout=60,
             )
             if resp.ok:
-                return (resp.json()["choices"][0]["message"]["content"] or "").strip() or None
+                txt = (resp.json()["choices"][0]["message"]["content"] or "").strip() or None
+                return txt, ("Imagen enviada sin anonimización visual a API híbrida; requiere revisión humana." if txt else None)
         except requests.RequestException:
-            return None
-    return None
+            return None, None
+    return None, None
