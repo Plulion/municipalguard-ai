@@ -1,0 +1,3 @@
+external_id,supplier_tax_id,supplier_name,issue_date,amount_clp,status,procurement_external_id
+OC-2026-001,76.111.111-6,Servicios Alfa,2026-01-28,15500000,Aceptada,1234-10-LQ26
+OC-2026-002,77.222.222-K,Constructora Sur,2026-02-01,9500000,Enviada,1234-11-LE26

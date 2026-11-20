@@ -1,0 +1,5 @@
+transaction_date,transaction_type,account_code,supplier_name,supplier_tax_id,invoice_number,description,amount_clp,budget_amount_clp
+2026-01-05,Gasto,215-22,Servicios Alfa,76.111.111-6,F-1001,Mantención equipos,1250000,1500000
+2026-01-08,Gasto,215-22,Servicios Alfa,76.111.111-6,F-1001,Mantención equipos - registro repetido,1250000,1500000
+2026-01-12,Gasto,215-31,Constructora Sur,77.222.222-K,FC-209,Reparación vereda,9800000,7000000
+2026-01-15,Ingreso,115-03,,, ,Permisos municipales,4500000,

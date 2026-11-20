@@ -1,0 +1,4 @@
+external_id,title,publication_date,closing_date,status,estimated_amount_clp,awarded_amount_clp,offers_count,awarded_supplier_tax_id,supplier_name
+1234-10-LQ26,Servicio de mantención de luminarias,2026-01-03,2026-01-20,Adjudicada,15000000,15500000,3,76.111.111-6,Servicios Alfa
+1234-11-LE26,Reparación de veredas sector norte,2026-01-10,2026-01-25,Adjudicada,7000000,9500000,1,77.222.222-K,Constructora Sur
+1234-12-LP26,Adquisición de mobiliario,2026-01-12,2026-02-10,En evaluación,12000000,,2,,

@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: municipalguard
+      POSTGRES_USER: municipalguard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U municipalguard -d municipalguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    command: sh -c "alembic upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+    ports: ["127.0.0.1:8010:8000"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - artifacts_data:/workspace/data/artifacts
+    environment:
+      DATABASE_URL: postgresql+psycopg://municipalguard:${POSTGRES_PASSWORD}@db:5432/municipalguard
+      MGAI_API_KEYS_JSON: '{"${MGAI_API_KEY:?Defina MGAI_API_KEY en .env}":"demo-municipality"}'
+      DEMO_TENANT_NAME: Municipalidad Demo
+      MGAI_TENANTS_JSON: '{"demo-municipality":{"name":"Municipalidad Demo","institution_type":"municipality","country":"CL"}}'
+      MGAI_AUTO_CREATE_SCHEMA: "false"
+      MGAI_CORS_ORIGINS: "http://localhost:8501,http://127.0.0.1:8501"
+      AI_PROVIDER: ${AI_PROVIDER:-local}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-llama3.2-vision}
+      HYBRID_API_URL: ${HYBRID_API_URL:-}
+      HYBRID_API_KEY: ${HYBRID_API_KEY:-}
+      HYBRID_MODEL: ${HYBRID_MODEL:-gpt-4o-mini}
+      PII_MASKING_ENABLED: ${PII_MASKING_ENABLED:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  dashboard:
+    build: .
+    command: streamlit run frontend/app.py --server.address 0.0.0.0 --server.port 8501
+    ports: ["127.0.0.1:8501:8501"]
+    environment:
+      STREAMLIT_SERVER_HEADLESS: "true"
+      API_URL: http://api:8000
+      MGAI_API_KEY: ${MGAI_API_KEY:?Defina MGAI_API_KEY en .env}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  artifacts_data:
