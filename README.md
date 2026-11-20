@@ -3,7 +3,7 @@
 **Plataforma multiinstitucional de auditoría financiera continua, ingesta multimodal con OCR y revisión preventiva de bases de licitación bajo la normativa chilena.**  
 *Multi-tenant platform for continuous municipal financial auditing, OCR multimodal ingestion, and pre-publication tender compliance review under Chilean public procurement law.*
 
-[Ver documentación interactiva y tutorial (HTML ES/EN)](docs/index.html)
+[Ver documentación interactiva y tutorial (HTML ES/EN)](https://plulion.github.io/municipalguard-ai/)
 
 ---
 
